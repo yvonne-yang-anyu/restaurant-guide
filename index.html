@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>杨浦新江湾餐厅推荐</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -122,6 +123,13 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none !important;
+        }
+
+        .loading {
+            text-align: center;
+            color: white;
+            padding: 40px;
+            font-size: 1.2rem;
         }
 
         .results-section {
@@ -341,8 +349,6 @@
             font-size: 0.95rem;
         }
 
-
-
         .summary {
             color: #555;
             line-height: 1.6;
@@ -479,7 +485,7 @@
         <div class="results-section">
             <h2>📊 投票结果</h2>
             <div id="resultsContainer">
-                <p style="color: #888; text-align: center; padding: 30px;">暂无投票记录，快来成为第一个投票的人吧！</p>
+                <div class="loading">加载中...</div>
             </div>
         </div>
 
@@ -488,6 +494,11 @@
     </div>
 
     <script>
+        const SUPABASE_URL = 'https://ethgnzzyhopqmhzdifkjh.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_A0gRsqNhY-24Cun_VU8ixw_o13oflRD';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
         const restaurants = [
             { 
                 id: 1, 
@@ -588,7 +599,22 @@
         ];
 
         let selectedRestaurants = [];
-        let votes = JSON.parse(localStorage.getItem('restaurantVotes') || '[]');
+        let votes = [];
+
+        async function loadVotes() {
+            const { data, error } = await supabase
+                .from('votes')
+                .select('*')
+                .order('created_at', { ascending: true });
+            
+            if (error) {
+                console.error('加载投票失败:', error);
+                votes = [];
+            } else {
+                votes = data || [];
+            }
+            renderResults();
+        }
 
         function renderRestaurants() {
             const grid = document.getElementById('restaurantsGrid');
@@ -646,7 +672,7 @@
             renderRestaurants();
         }
 
-        function submitVote() {
+        async function submitVote() {
             const name = document.getElementById('voterName').value.trim();
             if (!name) {
                 alert('请输入你的名字！');
@@ -657,15 +683,32 @@
                 return;
             }
 
-            votes.push({
-                name: name,
-                restaurants: selectedRestaurants.map(id => restaurants.find(r => r.id === id).name),
-                timestamp: new Date().toLocaleString('zh-CN')
-            });
+            const btn = document.getElementById('submitVote');
+            btn.disabled = true;
+            btn.textContent = '提交中...';
 
-            localStorage.setItem('restaurantVotes', JSON.stringify(votes));
+            const selectedNames = selectedRestaurants.map(id => restaurants.find(r => r.id === id).name);
+
+            const { error } = await supabase
+                .from('votes')
+                .insert([
+                    { 
+                        voter_name: name, 
+                        restaurant_ids: selectedNames 
+                    }
+                ]);
+
+            btn.disabled = false;
+            btn.textContent = '提交投票';
+
+            if (error) {
+                alert('投票失败，请重试！');
+                console.error(error);
+                return;
+            }
+
             showSuccessMessage();
-            renderResults();
+            await loadVotes();
             selectedRestaurants = [];
             document.getElementById('voterName').value = '';
             renderRestaurants();
@@ -692,9 +735,10 @@
             });
 
             votes.forEach(v => {
-                v.restaurants.forEach(r => {
+                const restaurantNames = Array.isArray(v.restaurant_ids) ? v.restaurant_ids : v.restaurant_ids;
+                restaurantNames.forEach(r => {
                     voteCounts[r] = (voteCounts[r] || 0) + 1;
-                    votersByRestaurant[r].push(v.name);
+                    votersByRestaurant[r].push(v.voter_name);
                 });
             });
 
@@ -732,7 +776,7 @@
         }
 
         renderRestaurants();
-        renderResults();
+        loadVotes();
     </script>
 </body>
 </html>
