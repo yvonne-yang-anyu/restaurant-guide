@@ -599,19 +599,22 @@
         ];
 
         let selectedRestaurants = [];
-        let votes = [];
+        let votes = JSON.parse(localStorage.getItem('restaurantVotes') || '[]');
+        let useLocalStorage = true;
 
         async function loadVotes() {
-            const { data, error } = await supabase
-                .from('votes')
-                .select('*')
-                .order('created_at', { ascending: true });
-            
-            if (error) {
-                console.error('加载投票失败:', error);
-                votes = [];
-            } else {
-                votes = data || [];
+            try {
+                const { data, error } = await supabase
+                    .from('votes')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+                
+                if (!error && data) {
+                    votes = data;
+                    useLocalStorage = false;
+                }
+            } catch (e) {
+                console.log('使用本地存储');
             }
             renderResults();
         }
@@ -689,26 +692,43 @@
 
             const selectedNames = selectedRestaurants.map(id => restaurants.find(r => r.id === id).name);
 
-            const { error } = await supabase
-                .from('votes')
-                .insert([
-                    { 
-                        voter_name: name, 
-                        restaurant_ids: selectedNames 
+            if (!useLocalStorage) {
+                try {
+                    const { error } = await supabase
+                        .from('votes')
+                        .insert([
+                            { 
+                                voter_name: name, 
+                                restaurant_ids: selectedNames 
+                            }
+                        ]);
+                    
+                    if (!error) {
+                        btn.disabled = false;
+                        btn.textContent = '提交投票';
+                        showSuccessMessage();
+                        await loadVotes();
+                        selectedRestaurants = [];
+                        document.getElementById('voterName').value = '';
+                        renderRestaurants();
+                        return;
                     }
-                ]);
-
-            btn.disabled = false;
-            btn.textContent = '提交投票';
-
-            if (error) {
-                alert('投票失败，请重试！');
-                console.error(error);
-                return;
+                } catch (e) {
+                    console.log('云端保存失败，使用本地存储');
+                }
             }
 
+            votes.push({
+                voter_name: name,
+                restaurant_ids: selectedNames,
+                created_at: new Date().toISOString()
+            });
+            localStorage.setItem('restaurantVotes', JSON.stringify(votes));
+            
+            btn.disabled = false;
+            btn.textContent = '提交投票';
             showSuccessMessage();
-            await loadVotes();
+            renderResults();
             selectedRestaurants = [];
             document.getElementById('voterName').value = '';
             renderRestaurants();
@@ -735,22 +755,25 @@
             });
 
             votes.forEach(v => {
-                const restaurantNames = Array.isArray(v.restaurant_ids) ? v.restaurant_ids : v.restaurant_ids;
-                restaurantNames.forEach(r => {
-                    voteCounts[r] = (voteCounts[r] || 0) + 1;
-                    votersByRestaurant[r].push(v.voter_name);
-                });
+                const voterName = v.voter_name || v.name;
+                const restaurantNames = Array.isArray(v.restaurant_ids) ? v.restaurant_ids : (v.restaurants || v.restaurant_ids);
+                if (restaurantNames) {
+                    restaurantNames.forEach(r => {
+                        voteCounts[r] = (voteCounts[r] || 0) + 1;
+                        votersByRestaurant[r].push(voterName);
+                    });
+                }
             });
 
             const sorted = Object.entries(voteCounts)
                 .sort((a, b) => b[1] - a[1])
                 .filter(([_, count]) => count > 0);
 
-            const maxVotes = Math.max(...sorted.map(([_, count]) => count));
+            const maxVotes = sorted.length > 0 ? Math.max(...sorted.map(([_, count]) => count)) : 0;
 
             container.innerHTML = sorted.map(([name, count], index) => {
                 const rankClass = index === 0 ? 'result-rank-1' : index === 1 ? 'result-rank-2' : index === 2 ? 'result-rank-3' : 'result-rank-other';
-                const percentage = (count / maxVotes * 100).toFixed(0);
+                const percentage = maxVotes > 0 ? (count / maxVotes * 100).toFixed(0) : 0;
                 const voters = votersByRestaurant[name].join('、');
                 return `
                     <div class="result-item">
