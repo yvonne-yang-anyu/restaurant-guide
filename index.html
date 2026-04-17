@@ -798,8 +798,13 @@
             `;
         }
 
-        renderRestaurants();
-        loadVotes();
+        try {
+            renderRestaurants();
+            loadVotes();
+        } catch (e) {
+            console.error(e);
+            renderRestaurants();
+        }
     </script>
 </body>
 </html>
