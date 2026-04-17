@@ -485,7 +485,7 @@
         <div class="results-section">
             <h2>📊 投票结果</h2>
             <div id="resultsContainer">
-                <div class="loading">加载中...</div>
+                <p style="color: #888; text-align: center; padding: 30px;">暂无投票记录，快来成为第一个投票的人吧！</p>
             </div>
         </div>
 
@@ -494,11 +494,6 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://ethgnzzyhopqmhzdifkjh.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_A0gRsqNhY-24Cun_VU8ixw_o13oflRD';
-        
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
         const restaurants = [
             { 
                 id: 1, 
@@ -601,22 +596,14 @@
         let selectedRestaurants = [];
         let votes = JSON.parse(localStorage.getItem('restaurantVotes') || '[]');
         let useLocalStorage = true;
+        let supabase = null;
 
-        async function loadVotes() {
-            try {
-                const { data, error } = await supabase
-                    .from('votes')
-                    .select('*')
-                    .order('created_at', { ascending: true });
-                
-                if (!error && data) {
-                    votes = data;
-                    useLocalStorage = false;
-                }
-            } catch (e) {
-                console.log('使用本地存储');
-            }
-            renderResults();
+        try {
+            const SUPABASE_URL = 'https://ethgnzzyhopqmhzdifkjh.supabase.co';
+            const SUPABASE_KEY = 'sb_publishable_A0gRsqNhY-24Cun_VU8ixw_o13oflRD';
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } catch (e) {
+            console.log('Supabase 初始化失败，使用本地存储');
         }
 
         function renderRestaurants() {
@@ -692,7 +679,7 @@
 
             const selectedNames = selectedRestaurants.map(id => restaurants.find(r => r.id === id).name);
 
-            if (!useLocalStorage) {
+            if (supabase && !useLocalStorage) {
                 try {
                     const { error } = await supabase
                         .from('votes')
@@ -798,13 +785,30 @@
             `;
         }
 
-        try {
-            renderRestaurants();
-            loadVotes();
-        } catch (e) {
-            console.error(e);
-            renderRestaurants();
+        async function loadVotes() {
+            if (!supabase) {
+                renderResults();
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabase
+                    .from('votes')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+                
+                if (!error && data) {
+                    votes = data;
+                    useLocalStorage = false;
+                }
+            } catch (e) {
+                console.log('使用本地存储');
+            }
+            renderResults();
         }
+
+        renderRestaurants();
+        loadVotes();
     </script>
 </body>
 </html>
